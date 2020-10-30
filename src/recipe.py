@@ -1,6 +1,7 @@
 from utils import laplacianStack
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Lasso
 
 def recipeMaker(imgBlock_in, imgBlock_out):
     lstack_in, residual_in = laplacianStack(imgBlock_in)
@@ -20,12 +21,33 @@ def recipeMaker(imgBlock_in, imgBlock_out):
     
     Y1 = highFreqData_out_chrom1.reshape(64*64)
     X = highFreqData_in.reshape(64*64,3)
-    reg1 = LinearRegression().fit(X, Y1)
+    reg_chrom1 = LinearRegression().fit(X, Y1)
 
     Y2 = highFreqData_out_chrom2.reshape(64*64)
-    reg2 = LinearRegression().fit(X, Y2)
+    reg_chrom2 = LinearRegression().fit(X, Y2)
     
-    print(reg1.coef_,reg1.intercept_,reg1.score(X,Y1))
-    print(reg2.coef_,reg2.intercept_,reg2.score(X,Y2))
 
-    # print(highFreqData_in_chrom.shape)
+    # recipe for luminance layer
+    highFreqData_out_lum = highFreqData_out[:,:,0]
+    
+    X=highFreqData_in.reshape(64*64,3)
+    for layer in lstack_in:
+        X = np.concatenate((X,layer[:,:,0].reshape(64*64,1)),axis=1)
+    
+    #this is k for the piecewise function
+    k=6
+    in_lum=highFreqData_in[:,:,0]
+    maxi=np.max(in_lum)
+    mini=np.min(in_lum)
+    for i in range(1,k):
+        yi = mini + i*(maxi-mini)/k
+        si = (in_lum>=yi)
+        si = si*(in_lum-yi)
+        si.shape +=(1,)
+        X = np.concatenate((X,si.reshape(64*64,1)),axis=1)
+
+    model=Lasso( fit_intercept = True, precompute = True,  max_iter = 1e4)
+    reg_lum = model.fit(X,highFreqData_out_lum.reshape(64*64,1))
+    
+    # return 
+
