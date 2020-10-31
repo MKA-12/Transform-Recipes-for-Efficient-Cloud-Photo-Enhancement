@@ -46,8 +46,13 @@ def recipeMaker(imgBlock_in, imgBlock_out):
         si.shape +=(1,)
         X = np.concatenate((X,si.reshape(64*64,1)),axis=1)
 
-    model=Lasso( fit_intercept = True, precompute = True,  max_iter = 1e4)
+    model=Lasso( fit_intercept = True, precompute = True,  max_iter = 1e9)
     reg_lum = model.fit(X,highFreqData_out_lum.reshape(64*64,1))
     
-    # return 
-
+    recipe_a = residual_recipe
+    recipe_b = np.append(reg_chrom1.coef_,reg_chrom1.intercept_)
+    recipe_c = np.append(reg_chrom2.coef_,reg_chrom2.intercept_)
+    recipe_d = np.array([reg_lum.coef_[0],reg_lum.coef_[1],reg_lum.coef_[2],reg_lum.intercept_[0]])
+    recipe_e = np.array([reg_lum.coef_[i] for i in range(3,3+len(lstack_in))])
+    recipe_f = np.array([reg_lum.coef_[i] for i in range(3+len(lstack_in),len(reg_lum.coef_))])
+    return recipe_a, recipe_b, recipe_c, recipe_d, recipe_e, recipe_f
