@@ -5,12 +5,13 @@ import numpy as np
 from utils import convertRGB_YCbCr
 from utils import laplacianStack
 from recipe import recipeMaker
+from reconstruction import reconstruct
 import matplotlib.pyplot as plt
+from params import wSize, k
+
 def main(args):
     # image load
-    wSize = 64
     stepSize = wSize//2
-    k=6
 
     inputImage = cv2.imread(args[0])
     outputImage = cv2.imread(args[1])
@@ -74,23 +75,24 @@ def main(args):
             recipe_norm.append(norm)
         recipes_norm.append(recipe_norm)
     recipes_norm=np.array(recipes_norm)
-
-    #display recipe
-    fig, axes = plt.subplots(6)
-    for i in range(recipes_norm.shape[0]):
-        img=np.array(recipes_norm[i][0])
-        for j in range(1,len(recipes_norm[i])):
-            img=np.hstack([img,recipes_norm[i][j]])
-        axes[i].imshow(np.array(img),cmap='gray')
     
-    plt.show()
+    recipes_norm[0] = np.array(recipes_norm[0])
+    for i in range(1,len(recipes_norm)):
+        recipes_norm[i] = np.round(np.array(recipes_norm[i]) * 255)
+    
+    reconstruct(inputImage,recipes_norm)
+    #display recipe
+    # fig, axes = plt.subplots(6)
+    # for i in range(recipes_norm.shape[0]):
+    #     img=np.array(recipes_norm[i][0])
+    #     for j in range(1,len(recipes_norm[i])):
+    #         img=np.hstack([img,recipes_norm[i][j]])
+    #     axes[i].imshow(np.array(img),cmap='gray')
+    
+    # plt.show()
     
 if __name__ == '__main__':
     inputImageLocation = '../images/inp.jpg'
     outputImageLocation = '../images/out.jpg'
     args = [inputImageLocation, outputImageLocation]
     main(args)
-
-
-
-
