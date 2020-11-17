@@ -2,11 +2,21 @@ from utils import laplacianStack
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
+from params import wSize, k
+from imresize import imresize
+def get_lowpass_image(I):
+    """ Downsample image """
+
+    lp_ratio   = wSize
+    lp_sz = [s/lp_ratio for s in I.shape[0:2]]
+    lowpassI   = imresize(I,lp_sz)
+    return lowpassI
 
 def recipeMaker(imgBlock_in, imgBlock_out):
     lstack_in, residual_in = laplacianStack(imgBlock_in)
     lstack_out, residual_out = laplacianStack(imgBlock_out)
-
+    residual_in = get_lowpass_image(residual_in)
+    residual_out = get_lowpass_image(residual_out)
     # recipe for the residual layer
     residual_recipe = (residual_out+1)/(residual_in+1)
 
@@ -19,11 +29,11 @@ def recipeMaker(imgBlock_in, imgBlock_out):
     highFreqData_out_chrom1=highFreqData_out[:,:,1]
     highFreqData_out_chrom2=highFreqData_out[:,:,2]
     
-    Y1 = highFreqData_out_chrom1.reshape(64*64)
+    Y1 = highFreqData_out_chrom1.reshape(64*64,1)
     X = highFreqData_in.reshape(64*64,3)
+    Y2 = highFreqData_out_chrom2.reshape(64*64,1)
     reg_chrom1 = LinearRegression().fit(X, Y1)
 
-    Y2 = highFreqData_out_chrom2.reshape(64*64)
     reg_chrom2 = LinearRegression().fit(X, Y2)
     
 
@@ -55,4 +65,5 @@ def recipeMaker(imgBlock_in, imgBlock_out):
     recipe_d = np.array([reg_lum.coef_[0],reg_lum.coef_[1],reg_lum.coef_[2],reg_lum.intercept_[0]])
     recipe_e = np.array([reg_lum.coef_[i] for i in range(3,3+len(lstack_in))])
     recipe_f = np.array([reg_lum.coef_[i] for i in range(3+len(lstack_in),len(reg_lum.coef_))])
+
     return recipe_a, recipe_b, recipe_c, recipe_d, recipe_e, recipe_f
