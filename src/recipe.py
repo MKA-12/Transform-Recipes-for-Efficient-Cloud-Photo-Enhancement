@@ -1,22 +1,12 @@
 from utils import laplacianStack
 import numpy as np
-from sklearn.linear_model import LinearRegression
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import LinearRegression, Lasso
 from params import wSize, k
-from imresize import imresize
-def get_lowpass_image(I):
-    """ Downsample image """
-
-    lp_ratio   = wSize
-    lp_sz = [s/lp_ratio for s in I.shape[0:2]]
-    lowpassI   = imresize(I,lp_sz)
-    return lowpassI
 
 def recipeMaker(imgBlock_in, imgBlock_out):
     lstack_in, residual_in = laplacianStack(imgBlock_in)
     lstack_out, residual_out = laplacianStack(imgBlock_out)
-    residual_in = get_lowpass_image(residual_in)
-    residual_out = get_lowpass_image(residual_out)
+
     # recipe for the residual layer
     residual_recipe = (residual_out+1)/(residual_in+1)
 
@@ -32,9 +22,10 @@ def recipeMaker(imgBlock_in, imgBlock_out):
     Y1 = highFreqData_out_chrom1.reshape(64*64,1)
     X = highFreqData_in.reshape(64*64,3)
     Y2 = highFreqData_out_chrom2.reshape(64*64,1)
-    reg_chrom1 = LinearRegression().fit(X, Y1)
-
-    reg_chrom2 = LinearRegression().fit(X, Y2)
+    model1=Lasso()
+    reg_chrom1 = model1.fit(-X, Y1)
+    model2=Lasso()
+    reg_chrom2 = model2.fit(-X, Y2)
     
 
     # recipe for luminance layer
@@ -44,8 +35,6 @@ def recipeMaker(imgBlock_in, imgBlock_out):
     for layer in lstack_in:
         X = np.concatenate((X,layer[:,:,0].reshape(64*64,1)),axis=1)
     
-    #this is k for the piecewise function
-    k=6
     in_lum=highFreqData_in[:,:,0]
     maxi=np.max(in_lum)
     mini=np.min(in_lum)
@@ -57,12 +46,12 @@ def recipeMaker(imgBlock_in, imgBlock_out):
         X = np.concatenate((X,si.reshape(64*64,1)),axis=1)
 
     model=Lasso( fit_intercept = True, precompute = True,  max_iter = 1e9)
-    reg_lum = model.fit(X,highFreqData_out_lum.reshape(64*64,1))
+    reg_lum = model.fit(-X,highFreqData_out_lum.reshape(64*64,1))
     
     recipe_a = residual_recipe
-    recipe_b = np.append(reg_chrom1.coef_,reg_chrom1.intercept_)
-    recipe_c = np.append(reg_chrom2.coef_,reg_chrom2.intercept_)
-    recipe_d = np.array([reg_lum.coef_[0],reg_lum.coef_[1],reg_lum.coef_[2],reg_lum.intercept_[0]])
+    recipe_b = np.append(reg_chrom1.coef_,-reg_chrom1.intercept_)
+    recipe_c = np.append(reg_chrom2.coef_,-reg_chrom2.intercept_)
+    recipe_d = np.array([reg_lum.coef_[0],reg_lum.coef_[1],reg_lum.coef_[2],-reg_lum.intercept_[0]])
     recipe_e = np.array([reg_lum.coef_[i] for i in range(3,3+len(lstack_in))])
     recipe_f = np.array([reg_lum.coef_[i] for i in range(3+len(lstack_in),len(reg_lum.coef_))])
 

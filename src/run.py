@@ -24,8 +24,6 @@ def main(args):
     outputImage = cv2.imread(args[1])
 
     # Converting RGB image to YCbCr space
-    # inputImage = cv2.resize(inputImage, (512, 512))
-    # outputImage = inputImage
 
     inputImageYCbCr = convertRGB_YCbCr(inputImage)
     outputImageYCbCr = convertRGB_YCbCr(outputImage)
@@ -79,7 +77,8 @@ def main(args):
     for recipe in recipes:
         recipe_norm=[]
         for dim in range(recipe.shape[2]):
-            layer = recipe[:,:,dim]
+            layer = recipe[:,:,dim] 
+            layer -= np.min(layer)
             norm = layer/((np.max(layer)-np.min(layer)) if (np.max(layer)-np.min(layer))!=0 else 1)
             recipe_norm.append(norm)
         recipes_norm.append(recipe_norm)
@@ -90,8 +89,8 @@ def main(args):
 
     print("Recipe Normalized")    
     np.savez_compressed('recipe',recipe=recipes_norm)
-    #display recipe
     # recipes_norm = np.load('recipe.npz',allow_pickle=True)['recipe']
+    #display recipe
     fig, axes = plt.subplots(6)
     for i in range(recipes_norm.shape[0]):
         img=np.array(recipes_norm[i][0])
