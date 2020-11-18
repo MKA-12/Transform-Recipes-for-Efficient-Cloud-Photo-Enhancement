@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from params import wSize, sigma
-
+import os
 def float2uint8(R):
     return np.uint8(np.clip(np.round(R),0,255))
 
@@ -120,3 +120,8 @@ def GaussianKernel(size=wSize, sigma=sigma):
 
 def nearest2power(num):
     return 2**int(np.log2(num)+1)
+def improved(flag):
+    imageDownsample = cv2.imread('../transformed/outO.jpg')
+    os.remove('../transformed/outO.jpg')
+    path = '../outputs/out.jpg'
+    cv2.imwrite(path, imageDownsample, [int(cv2.IMWRITE_JPEG_QUALITY),25])

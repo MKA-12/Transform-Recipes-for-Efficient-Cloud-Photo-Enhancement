@@ -11,7 +11,7 @@ def upscaleInputImage(shapeInputImage,hist_ref,rng_ref,jpegDownsampledImage):
     deg_res       = 256*10
 
     jpegCompUpsampled = cv2.resize(jpegDownsampledImage,(shapeInputImage[1],shapeInputImage[0]))
-    cv2.imwrite('../images/upsized.jpg',jpegCompUpsampled)
+    # cv2.imwrite('../images/upsized.jpg',jpegCompUpsampled)
     # O = process(hist_ref,rng_ref,jpegCompUpsampled, transfer_color = True, nlevels = nlevels, deg_res = deg_res, ref_res = ref_res, hist_resample = hist_resample)
 
     #Processing the image and upsampling
@@ -25,11 +25,9 @@ def upscaleInputImage(shapeInputImage,hist_ref,rng_ref,jpegDownsampledImage):
     OutputImage = convertYCbCr_RGB(OutputImage)
     OutputImage = OutputImage.astype(np.uint8)
 
+
+    cv2.imwrite('../transformed/upscaledInput.jpg',OutputImage)
     return OutputImage
-
-
-    cv2.imwrite('../images/upscaledInput.jpg',OutputImage)
-
 
 
 def add_noise(I, sigma = 1.0):

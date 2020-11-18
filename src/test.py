@@ -10,20 +10,27 @@ import os
 
 # Downsize input image
 # Compression + creating histograms
-readImg = cv2.imread('../images/inp.jpg')
-readImg = np.vstack([readImg,np.zeros((1,readImg.shape[1],3),dtype = 'uint8')])
-readImg = np.hstack([readImg,np.zeros((readImg.shape[0],4,3),dtype = 'uint8')])
+readImg = cv2.imread('../inputs/hazed.jpg')
 
 
-hist_ref,rng_ref = imageCompression(readImg,20)
+if readImg.shape[0]%8 != 0:
+    readImg = np.vstack([readImg,np.zeros((8-(readImg.shape[0]%8),readImg.shape[1],3),dtype = 'uint8')])
+if readImg.shape[1]%8 !=0:
+    readImg = np.hstack([readImg,np.zeros((readImg.shape[0],8-readImg.shape[1]%8,3),dtype = 'uint8')])
+
 
 dir = '../CompressedInputs'
 if os.path.exists(dir):
     shutil.rmtree(dir)
 os.makedirs(dir)
 
+
+hist_ref,rng_ref = imageCompression(readImg,20)
+
+
+
 np.savez_compressed('../CompressedInputs/histograms_ranges', hist_ref = hist_ref,rng_ref = rng_ref,input_shape = readImg.shape)
-shutil.copyfile('../images/compressed.jpg','../CompressedInputs/compressed.jpg')
+# shutil.copyfile('../images/compressed.jpg','../CompressedInputs/compressed.jpg')
 shutil.make_archive('../transferFiles','zip','../CompressedInputs')
 
 

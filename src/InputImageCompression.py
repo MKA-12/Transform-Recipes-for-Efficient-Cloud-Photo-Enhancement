@@ -28,7 +28,7 @@ def imageCompression(inputImg,compressionQuality=20):
 
 
 def JPEG_Compression(img,jpg_quality = 95):
-    path = '../images/compressed.jpg'
+    path = '../CompressedInputs/compressed.jpg'
     cv2.imwrite(path, img, [int(cv2.IMWRITE_JPEG_QUALITY), jpg_quality])
 
 
