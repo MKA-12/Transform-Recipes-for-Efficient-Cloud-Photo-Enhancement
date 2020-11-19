@@ -1,5 +1,5 @@
 import numpy as np
-from utils import laplacianStack, convertRGB_YCbCr, nearest2power, GaussianKernel, convertYCbCr_RGB
+from utils import laplacianStack, convertRGB_YCbCr, convertYCbCr_RGB
 from utils import get_lowpass_image, get_multiscale_luminance, get_patch_features, extend_features, get_model
 from params import wSize, k, sigma, step
 import cv2
@@ -13,8 +13,6 @@ import numbers
 
 simplefilter("ignore", category=ConvergenceWarning)
 
-
-
 def reconstruct_lowpass_residual(lowpassI, recipe_lp, outputImageRef):
     """ Reconstruct lowpass part of the image from recipe """
 
@@ -27,8 +25,6 @@ def reconstruct_lowpass_residual(lowpassI, recipe_lp, outputImageRef):
         lowpassO = lowpassO * (lowpassI+1) - 1
     lowpassO = imresize(lowpassO,outputImageRef.shape[0:2])
     return lowpassO
-
-
 
 
 def reconstruct(inputImageRef,inputImage, outputImageRef,rcp_channels, recipe_hp_shape, recipe_lp, recipe_hp):
@@ -65,21 +61,17 @@ def reconstruct(inputImageRef,inputImage, outputImageRef,rcp_channels, recipe_hp
     highpassI = I - lowpassI
 
     idx = 0
-    for imin in tqdm(range(0,I.shape[0],step),desc="reconstructio"):
+    for imin in tqdm(range(0,I.shape[0],step),desc="Reconstruction"):
         for jmin in range(0,I.shape[1],step):
             idx += 1
-            # print("\r      - Reconstruct: %.2f%%" % (100.0*idx/recipe_h/recipe_w))
             # Recipe indices
             patch_i = imin//step
             patch_j = jmin//step
 
-            # XXX: this is hacky
             patch_i = min(patch_i, recipe_hp.shape[0]-1)
             patch_j = min(patch_j, recipe_hp.shape[1]-1)
-
             
             r_index = (patch_i % 2)*2 + (patch_j % 2)
-            
 
             # Patch indices in the full-res image
             i_rng = (imin, min(imin+wSize,I.shape[0]))
@@ -90,6 +82,7 @@ def reconstruct(inputImageRef,inputImage, outputImageRef,rcp_channels, recipe_hp
 
             X = extend_features(X,Xr,X_degraded = X_degraded, i_rng = i_rng, j_rng = j_rng, ms_levels = ms_luma)
 
+            # Traversing each recipe channel
             rcp_chan = 0
             for chanO in range(outputImageRef.shape[2]):
                 rcp_stride = rcp_channels[chanO]
@@ -105,7 +98,6 @@ def reconstruct(inputImageRef,inputImage, outputImageRef,rcp_channels, recipe_hp
                 recons         = reg.predict(X[:,0:rcp_stride-1])
                 R[r_index][i_rng[0]:i_rng[1], j_rng[0]:j_rng[1],chanO] += np.reshape(recons, (i_rng[1]-i_rng[0],j_rng[1]-j_rng[0]))
                 rcp_chan += rcp_stride
-    # sys.stdout.write("\n")
 
     R = linear_interpolate(R)
     return R
@@ -127,7 +119,6 @@ def linear_interpolate(R):
     x[:,0:s] = 1
     x.shape += (1,)
     
-    print(res.dtype,x.dtype)
     res  = np.multiply(res,x) + np.multiply((1-x),R[1])
     res2 = np.multiply(res2,x) + np.multiply((1-x),R[3])
 

@@ -5,6 +5,8 @@ import os
 import imageio
 
 def remodel_save(im):
+    """Remodels recipe to store-able format."""
+
     sz = im.shape
     new_im = np.zeros((sz[0],sz[1]*sz[2]))
     for c in range(sz[2]):
@@ -12,20 +14,24 @@ def remodel_save(im):
     return new_im
 
 def remodel_get(im, sz):
+    """Remodels the retrieved recipe to a usable format."""
+    
     new_im = np.zeros(sz)
     for c in range(sz[2]):
         new_im[:,:,c] = im[:,c*sz[1]:(c+1)*sz[1]]
     return new_im
 
 def save_recipe(recipe_lp,recipe_hp):
-    global _nbytes, enc_maxs, enc_mins, rec, recipe_hp_shape, recipe_lp_shape
+    """Saves the computed recipe."""
 
+    global _nbytes, enc_maxs, enc_mins, rec, recipe_hp_shape, recipe_lp_shape
+    
+    # Encodes recipe_hp to 0 - 255 space
     rcp   = recipe_hp
     sz    = rcp.shape[0:2]
     nChan = rcp.shape[2]
     mins  = nChan*[None]
     maxs  = nChan*[None]
-    # print(recipe_hp)
 
     nbins = 2**8-1
     result = np.zeros(rcp.shape, dtype = np.uint8)
@@ -50,6 +56,7 @@ def save_recipe(recipe_lp,recipe_hp):
     enc_maxs = maxs
     _nbytes += recipe_hp.nbytes
 
+    # Paths to store the recipe
     fname_lp = "../Compressions/recipe_lp.tif"
     fname_hp = "../Compressions/recipe_hp.png"
 
@@ -63,18 +70,20 @@ def save_recipe(recipe_lp,recipe_hp):
     fSize = os.stat(fname_hp).st_size
 
     h,w = lp_img.shape
+    # Recipe saved
     imageio.imsave(fname_lp, lp_img)
     fSize += os.stat(fname_lp).st_size
 
-    print(_nbytes, fSize)
-    print("compression = ",fSize/_nbytes*100)
     _nbytes = fSize
     
 
 
 def get_recipe():
+    """Loads the recipe"""
+
     global enc_mins, enc_maxs, recipe_hp_shape, recipe_lp_shape
 
+    # Paths to stored recipe
     fname_lp = "../Compressions/recipe_lp.tif"
     fname_hp = "../Compressions/recipe_hp.png"
 
@@ -86,6 +95,7 @@ def get_recipe():
     recipe_lp = im
     recipe_lp = remodel_get(recipe_lp, recipe_lp_shape).astype('float16')
 
+    # Decodes recipe_hp from 0-255 space
     rcp = recipe_hp
     sz    = rcp.shape[0:2]
     nChan = rcp.shape[2]
@@ -106,12 +116,13 @@ def get_recipe():
         result[:,:,c] = vals
     recipe_hp = result
 
-
     return recipe_hp, recipe_lp
 
 USE_ADOBE_QTABLES = False
 
 def get_img(path):
+    """Loads image from the path"""
+
     name, ext = os.path.splitext(path)
     if ext == '.jp2':
         fname = name+"_temp.png"
@@ -130,6 +141,8 @@ def get_img(path):
 
 
 def select_qtable(q):
+    """JPEG compression utility"""
+
     if q <= 10:
         qtable = {
             0: array('b', [27, 26, 26, 41, 29, 41, 65, 38, 38, 65, 66, 47, 47, 47, 66, 39, 28, 28, 28, 28, 39, 34, 23, 23, 23, 23, 23, 34, 17, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]),
@@ -184,6 +197,8 @@ def select_qtable(q):
 
 
 def save_and_get_img(im, path, quality = -1, subsampling = 1):
+    """stores and retrieves image given path, simulating transfer between client and server."""
+
     name, ext = os.path.splitext(path)
     if ext == '.jpg' or ext == '.jpeg':
         if quality == -1:

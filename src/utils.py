@@ -6,9 +6,13 @@ from params import k
 from sklearn.linear_model import Lasso
 from imresize import imresize
 def float2uint8(R):
+    '''Clamping image block from float to uint8.'''
+
     return np.uint8(np.clip(np.round(R),0,255))
 
 def convertRGB_YCbCr(im):
+    '''Converting image to YCbCr space from RGB'''
+
     im = im.astype(np.float32)
     YCbCr = np.zeros(im.shape)
     YCbCr[:,:,0] = 0.299*im[:,:,0] + 0.587*im[:,:,1] + 0.114*im[:,:,2]
@@ -19,6 +23,8 @@ def convertRGB_YCbCr(im):
     return YCbCr
 
 def convertYCbCr_RGB(im):
+    '''Converting image to RGB space from YCbCr.'''
+
     im = im.astype(np.float32)
     RGB = np.zeros(im.shape)
     RGB[:,:,0] = im[:,:,0] + 1.402*(im[:,:,2]-128)
@@ -30,6 +36,8 @@ def convertYCbCr_RGB(im):
     return RGB
 
 def laplacianStack(I, nLevels= -1, minSize = 1, useStack = True):
+    ''' Builds laplacian stack or pyramid based on the value of `useStack`'''
+
     if nLevels == -1:
         nLevels = int(np.log2(I.shape[0]))+1
 
@@ -82,22 +90,8 @@ def laplacianStack(I, nLevels= -1, minSize = 1, useStack = True):
         
         return pyramid
 
-def GaussianKernel(size=wSize, sigma=sigma):
-    """\
-    creates gaussian kernel with side length l and a sigma of sig
-    """
-    x = np.linspace(- (size // 2), size // 2,size)
-    x /= np.sqrt(2)*sigma
-    x2 = x**2
-    kernel = np.exp(- x2[:, None] - x2[None, :])
-    return kernel / kernel.sum()
-
-def nearest2power(num):
-    return 2**int(np.log2(num)+1)
-
-
 def get_lowpass_image(I):
-    """ Downsample image """
+    """ Downsamples the image """
 
     lp_ratio   = wSize
     lp_sz = [s/lp_ratio for s in I.shape[0:2]]
@@ -106,6 +100,7 @@ def get_lowpass_image(I):
 
 def get_multiscale_luminance(I):
     """ Build the maps for multiscale luminance features """
+
     II = np.copy(I)[:,:,0]
     n_ms_levels = int(np.log2(wSize)-1)
     ms = np.zeros((I.shape[0],I.shape[1],n_ms_levels))
@@ -126,19 +121,7 @@ def get_patch_features(I, i_rng, j_rng):
      return X
 
 def extend_features( X, Xr, X_degraded = None, i_rng = None, j_rng = None,  ms_levels = None):
-    """ Add features for luminance prediction
-
-    Args:
-        X (np.array): basic features from the highpass
-        Xr (np.array): pixel values of the image
-            (or degraded image during estimation)
-        X_degraded (np.array): pixel values of the degraded image (to get the
-            range estimate during reconstruction)
-        i_rng (list of int): i coordinates of the patch
-        j_rng (list of int): j coordinates of the patch
-        ms_levels (np.array): pyramid maps for the multiscale features
-
-        """
+    """ Add features for luminance prediction"""
 
     luma_band_thresh = k-1
     Xl = Xr[:,0]
@@ -165,9 +148,12 @@ def extend_features( X, Xr, X_degraded = None, i_rng = None, j_rng = None,  ms_l
 
 def get_model(  ):
     """ Fetch the regression model to use """
+
     return Lasso(alpha = 1e-3, fit_intercept = True, precompute = True,  max_iter = 1e4)
 
 def buildGaussianPyramid(I, nLevels= -1, minSize = 16):
+    """Builds Gaussian Pyramid."""
+
     if nLevels == -1:
         nLevels = getNlevels(I,minSize)
 
@@ -179,6 +165,8 @@ def buildGaussianPyramid(I, nLevels= -1, minSize = 16):
     return pyramid
 
 def reconstructFromLaplacianPyramid(pyramid):
+    """Collapses Laplacian pyramid to form the original image."""
+    
     nLevels = len(pyramid)
     out = pyramid[-1]
     if len(pyramid) == 1:

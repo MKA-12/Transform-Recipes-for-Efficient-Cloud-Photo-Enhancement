@@ -3,3 +3,4 @@ src/__pycache__/*
 src/hello.jpg
 src/out.jpg
 .vscode/*
+.idea/*

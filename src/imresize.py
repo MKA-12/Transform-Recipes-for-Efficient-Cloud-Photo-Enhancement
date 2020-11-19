@@ -3,11 +3,9 @@ import numpy as np
 import scipy as sp
 from scipy.sparse import csr_matrix, lil_matrix, coo_matrix
 import pyximport
-
 pyximport.install(setup_args={"include_dirs":np.get_include()},
                   reload_support=True)
 import only_resize
-# import mghimproc
 
 def imresize(I,Oshape, method = "linear"):
     isint = (I.dtype.name == 'uint8')
@@ -67,13 +65,10 @@ def _imresize(I,Oshape, method = "linear"):
 
 def resizeAlongDim(O,dim,weights,indices):
     s      = list(O.shape)
-    # print(s,"--------")
     s[dim] = weights.shape[0]
-    # print(s,"++++++++")
     out = np.zeros(s[0]*s[1], dtype=np.float64)
     ret =  only_resize.resize(O,weights,indices, s[0], s[1],dim,out)#, s[0]*s[1])
     ret = np.reshape(ret,s)
-    # print(ret.shape)
     return ret
 
 

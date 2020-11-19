@@ -1,26 +1,11 @@
-# -------------------------------------------------------------------
-# File:    input_transfer.py
-# Author:  Michael Gharbi <gharbi@mit.edu>
-# Created: 2015-11-20
-# -------------------------------------------------------------------
-# 
-# 
-# 
-# ------------------------------------------------------------------#
-
-
 import os
 import sys
 import numpy as np
-
 from PIL import Image
 import cv2
 from scipy.interpolate import interp1d
 import argparse
-
-# from settings import DATA_DIR, OUTPUT_DIR
 from utils import laplacianStack, reconstructFromLaplacianPyramid, buildGaussianPyramid, convertRGB_YCbCr, convertYCbCr_RGB
-# from mghimproc import color
 from imresize import imresize
 from save_get import save_and_get_img
 
@@ -60,7 +45,6 @@ def transfer(Id,hist_ref,rng_ref, deg_res = 256, ref_res = 256*2, hist_resample 
         nit = 1
 
     for iteration in range(nit):
-        # print ("iteration %d" % iteration)
 
         LId = laplacianStack(Id, nLevels = nlevels + 1, useStack=False)
         LO = []
@@ -205,9 +189,6 @@ def get_transfer_function(source, h2,bins2, res1 = 256, res2 = 256*10):
     f = np.zeros((len(cdf1)-1,))
     for i in range(len(f)):
         found = np.where(cdf2_i >= cdf1[i])
-        # if len(found[0]) == 0:
-            # print cdf1[i]
-            # print cdf2_i
         idx = found[0][0]
         f[i] = idx *1.0/ res2
     return f,m2,M2
@@ -244,25 +225,10 @@ def process(hist_ref,rng_ref, Id, transfer_color = True, nlevels = 3, deg_res = 
     O[O>255] = 255
     O = convertYCbCr_RGB(O)
     O = O.astype(np.uint8)
-
-    # # Debug
-    # if output_dir is not None and I is not None:
-    #     plot_histograms(I.astype(np.float32),Id.astype(np.float32),O, os.path.join(output_dir,"hist_colors.png"))
-    #
-    #     LI  = buildLaplacianPyramid(I.astype(np.float32),nLevels   = nlevels + 1)
-    #     LId = buildLaplacianPyramid(Id.astype(np.float32), nLevels = nlevels + 1)
-    #     LO  = buildLaplacianPyramid(O.astype(np.float32), nLevels = nlevels + 1)
-    #
-    #     for c in range(3):
-    #         for il in range(nlevels):
-    #             plot_histograms(LI[il][:,:,c],LId[il][:,:,c],LO[il][:,:,c], os.path.join(output_dir,"hist_lapl-%02d-%02d.png" % (il,c)))
-
     return O
 
 def main(args):
-    # nlevels       = int(np.log2(ds))
     nlevels = 3
-    # print "%d levels" % nlevels
     ref_res       = 256*10
     deg_res       = 256*10
     hist_resample = 1
