@@ -1,193 +1,143 @@
 import numpy as np
 from utils import laplacianStack, convertRGB_YCbCr, nearest2power, GaussianKernel, convertYCbCr_RGB
-from params import wSize, k, sigma
+from utils import get_lowpass_image, get_multiscale_luminance, get_patch_features, extend_features, get_model
+from params import wSize, k, sigma, step
 import cv2
 from time import time
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-from sklearn.linear_model import Lasso
 from warnings import simplefilter
 from sklearn.exceptions import ConvergenceWarning
+from imresize import imresize
+import numbers
+
 simplefilter("ignore", category=ConvergenceWarning)
-def reconstruct(inputImage, recipes):
 
-    inputImageYCbCr = convertRGB_YCbCr(inputImage)
-    stepSize = wSize//2
-    w, l = inputImageYCbCr.shape[:2]
-    idx=0
-    idy=0
-    # kernel = GaussianKernel()
-    kernel = np.ones((wSize,wSize))
-    kernel2Layer = np.append(kernel.reshape(wSize,wSize,1),kernel.reshape(wSize,wSize,1),axis=2)
-    kernel3Layer = np.append(kernel2Layer,kernel.reshape(wSize,wSize,1),axis=2)
+
+
+def reconstruct_lowpass_residual(lowpassI, recipe_lp, outputImageRef):
+    """ Reconstruct lowpass part of the image from recipe """
+
+    lowpassO = recipe_lp.astype(np.float64)
+    if lowpassO.shape[2] == 1:
+        lI = lowpassI[:,:,0]
+        lI.shape += (1,)
+        lowpassO = lowpassO * (lI+1) - 1
+    else:
+        lowpassO = lowpassO * (lowpassI+1) - 1
+    lowpassO = imresize(lowpassO,outputImageRef.shape[0:2])
+    return lowpassO
+
+
+
+
+def reconstruct(inputImageRef,inputImage, outputImageRef,rcp_channels, recipe_hp_shape, recipe_lp, recipe_hp):
+    """ Reconstruct and approximation of the output image, from recipe"""
+
+    Ideg = imresize(inputImage, inputImageRef.shape[0:2])
+
+    # We reconstruct the output based on the reference input
+    I = np.copy(inputImageRef).astype(np.float64)
     
-    residual_out = np.zeros((inputImage.shape[0],inputImage.shape[1],2))
-    OYTemp = np.zeros(inputImage.shape[:2])
-    HY = np.zeros(inputImage.shape[:2])
-    HCb = np.zeros(inputImage.shape[:2])
-    HCr = np.zeros(inputImage.shape[:2])
+    
+    recipe_h = recipe_hp.shape[0]
+    recipe_w = recipe_hp.shape[1]
 
-    kernelSummation = np.zeros(inputImage.shape)
-    for i in tqdm(range(0, w - wSize + 1, stepSize)):
-        for j in range(0, l - wSize + 1, stepSize):    
-            residual_block, OYTemp_block, HY_block, HCb_block, HCr_block=reconstruct_block(inputImageYCbCr[i:i+wSize,j:j+wSize,:],recipes,idx,idy)
-            residual_out[i:i+wSize,j:j+wSize,:] += kernel2Layer * residual_block
-            OYTemp[i:i+wSize,j:j+wSize] += kernel * OYTemp_block
-            HY[i:i+wSize,j:j+wSize] += kernel * HY_block
-            HCb[i:i+wSize,j:j+wSize] += kernel * HCb_block
-            HCr[i:i+wSize,j:j+wSize] += kernel * HCr_block
-            kernelSummation[i:i+wSize,j:j+wSize,:] += kernel3Layer
-            idy += 1
-            # print(idx,idy)
-        if j + wSize < l:
-            residual_block, OYTemp_block, HY_block, HCb_block, HCr_block=reconstruct_block(inputImageYCbCr[i:i+wSize,-wSize:,:],recipes,idx,idy)
-            residual_out[i:i+wSize,-wSize:,:] += kernel2Layer * residual_block
-            OYTemp[i:i+wSize,-wSize:] += kernel * OYTemp_block
-            HY[i:i+wSize,-wSize:] += kernel * HY_block
-            HCb[i:i+wSize,-wSize:] += kernel * HCb_block
-            HCr[i:i+wSize,-wSize:] += kernel * HCr_block 
-            kernelSummation[i:i+wSize,-wSize:,:] += kernel3Layer
+    # Construct four images, in case of overlap, which we'll later linearly
+    # interpolate
+    R = []
+    for i in range(4):
+        R.append(np.zeros((I.shape[0],I.shape[1],outputImageRef.shape[2])))
+    
+
+    lowpassI = get_lowpass_image(I)
+
+    # Reconstruct lowpass
+    lowpassO = reconstruct_lowpass_residual(lowpassI, recipe_lp, outputImageRef)
+    for i in range(len(R)):
+        R[i] = np.copy(lowpassO)
+
+    # Multiscale features
+    ms_luma = get_multiscale_luminance(I)
+
+    # High pass component
+    lowpassI = imresize(lowpassI,I.shape[0:2])
+    highpassI = I - lowpassI
+
+    idx = 0
+    for imin in tqdm(range(0,I.shape[0],step),desc="reconstructio"):
+        for jmin in range(0,I.shape[1],step):
+            idx += 1
+            # print("\r      - Reconstruct: %.2f%%" % (100.0*idx/recipe_h/recipe_w))
+            # Recipe indices
+            patch_i = imin//step
+            patch_j = jmin//step
+
+            # XXX: this is hacky
+            patch_i = min(patch_i, recipe_hp.shape[0]-1)
+            patch_j = min(patch_j, recipe_hp.shape[1]-1)
+
             
-            idy+=1
-            # print(idx,idy)
-        
-        idy=0
-        idx+=1
+            r_index = (patch_i % 2)*2 + (patch_j % 2)
+            
 
-    if i + wSize < w:
-        for j in range(0, l - wSize + 1, stepSize):
-            residual_block, OYTemp_block, HY_block, HCb_block, HCr_block=reconstruct_block(inputImageYCbCr[-wSize:,j:j+wSize,:],recipes,idx,idy)
-            residual_out[-wSize:,j:j+wSize,:] = kernel2Layer * residual_block
-            OYTemp[-wSize:,j:j+wSize] = kernel * OYTemp_block
-            HY[-wSize:,j:j+wSize] = kernel * HY_block
-            HCb[-wSize:,j:j+wSize] = kernel * HCb_block
-            HCr[-wSize:,j:j+wSize] = kernel * HCr_block      
-            kernelSummation[-wSize:,j:j+wSize,:] += kernel3Layer
+            # Patch indices in the full-res image
+            i_rng = (imin, min(imin+wSize,I.shape[0]))
+            j_rng = (jmin, min(jmin+wSize,I.shape[1]))
+            X          = get_patch_features(highpassI,i_rng,j_rng)
+            Xr         = get_patch_features(inputImageRef,i_rng,j_rng)
+            X_degraded = get_patch_features(Ideg, i_rng, j_rng)
 
-            idy+=1
-            # print(idx,idy)
+            X = extend_features(X,Xr,X_degraded = X_degraded, i_rng = i_rng, j_rng = j_rng, ms_levels = ms_luma)
 
-        if j + wSize < l:
-            residual_block, OYTemp_block, HY_block, HCb_block, HCr_block=reconstruct_block(inputImageYCbCr[-wSize:,-wSize:,:],recipes,idx,idy)
-            residual_out[-wSize:,-wSize:,:] = kernel2Layer * residual_block
-            OYTemp[-wSize:,-wSize:] = kernel * OYTemp_block
-            HY[-wSize:,-wSize:] = kernel * HY_block
-            HCb[-wSize:,-wSize:] = kernel * HCb_block
-            HCr[-wSize:,-wSize:] = kernel * HCr_block        
-            kernelSummation[-wSize:,-wSize:,:] += kernel3Layer
+            rcp_chan = 0
+            for chanO in range(outputImageRef.shape[2]):
+                rcp_stride = rcp_channels[chanO]
+                reg        = get_model()
+                coefs = recipe_hp[patch_i, patch_j,rcp_chan:rcp_chan+rcp_stride]
 
-            idy+=1
-            # print(idx,idy)
+                # hack because sklearn needs to be fitted to initialize coef_, intercept_
+                reg.fit(np.zeros((2,2)), np.zeros((2,)))
 
-    output = np.zeros(inputImage.shape)
-    output[:,:,1:] += residual_out
-    output[:,:,0] += OYTemp + HY
-    output[:,:,1] += HCb
-    output[:,:,2] += HCr
+                reg.coef_      = coefs[0:-1]
+                reg.intercept_ = coefs[-1]
 
-    output /= kernelSummation
-    output = np.clip(output,0,255).astype('uint8')
-    return convertYCbCr_RGB(output)
+                recons         = reg.predict(X[:,0:rcp_stride-1])
+                R[r_index][i_rng[0]:i_rng[1], j_rng[0]:j_rng[1],chanO] += np.reshape(recons, (i_rng[1]-i_rng[0],j_rng[1]-j_rng[0]))
+                rcp_chan += rcp_stride
+    # sys.stdout.write("\n")
 
-def reconstruct_block(inputBlock, recipes, idx, idy):
-    
-    # --------1
-    
-    laplacianInpBlock, residualInpBlock = laplacianStack(inputBlock)
-    highFreqData_in = np.sum(laplacianInpBlock,axis=0)
-    
-    residualOutBlock = recipes[0][:,idx,idy]*(residualInpBlock+1)-1
+    R = linear_interpolate(R)
+    return R
 
-    laplacianInpBlock_Lum = laplacianInpBlock[:,:,:,0]
-    laplacianOutBlock_Lum = np.zeros(laplacianInpBlock_Lum.shape)
-    
-    # ---------2
+def linear_interpolate(R):
+    """ Linearly interpolate pixel values of overlapping patches"""
 
-    for i in range(len(laplacianInpBlock_Lum)):
-        laplacianOutBlock_Lum[i] = recipes[4][:,idx,idy][i] * laplacianInpBlock_Lum[i]
-    
-    # Collapsing laplacian stack to get an intermediate output luminance channel Ô Y
-    #----------3
-    upSampInpBlock = residualInpBlock[:,:,0].reshape(1,1).astype('uint8')
-    for i in range(int(np.log2(wSize))):
-        upSampInpBlock = cv2.pyrUp(upSampInpBlock)
-    upSampInpBlock = upSampInpBlock.astype('float32')
-    
-    upSampInpBlock += np.sum(laplacianInpBlock_Lum,axis=0)
-    upSampInpBlock = upSampInpBlock.astype('uint8')
-    
-    HighFreqCb = np.zeros(highFreqData_in[:,:,0].shape)
-    HighFreqY = np.zeros(highFreqData_in[:,:,0].shape)
-    HighFreqCr = np.zeros(highFreqData_in[:,:,0].shape)
-    in_lum=highFreqData_in[:,:,0]
-    maxi=np.max(in_lum)
-    mini=np.min(in_lum)
-    recipe_b = recipes[1][:,idx,idy][:3].reshape(-1,1)
-    recipe_c = recipes[2][:,idx,idy][:3].reshape(-1,1)
-    recipe_d = recipes[3][:,idx,idy][:3].reshape(-1,1)
-    recipe_b_offset = (recipes[1][:,idx,idy][-1])
-    recipe_c_offset = (recipes[2][:,idx,idy][-1])
-    recipe_d_offset = (recipes[3][:,idx,idy][-1])
-    recipe_f = recipes[5][:,idx,idy]
-    
-    yi = mini + np.arange(1,k)*(maxi-mini)/k
-    
-    si = np.zeros((in_lum.shape[0],in_lum.shape[1],k-1))
-    for i in range(0,k-1):
-        si[:,:,i] = (in_lum>=yi[i])*(in_lum-yi[i])*recipe_f[i]
-    sum_si = np.sum(si,axis=2)
+    res  = np.array(R[0])
+    res2 = np.array(R[2])
 
-    # X = highFreqData_in.reshape(wSize*wSize,3)
-    # a = time()
-    # modelCb=Lasso().fit(np.zeros((wSize*wSize,3)),np.zeros((wSize*wSize,1)))
-    # b = time()
-    # print(b-a,"Cb fit")
-    # modelCb.coef_ = recipe_b.reshape(3,)
-    # modelCb.intercept_ = recipe_b_offset.reshape(1,)
-    # a = time()
-    # HighFreqCb = modelCb.predict(X).reshape(wSize,wSize)
-    # b = time()
-    # print(b-a,"Cb pred")
+    sz = R[0].shape
+    s  = step
 
+    x = np.linspace(0,1,s)
+    x = np. reshape(x,(1,s))
+    x = np.concatenate((x,np.fliplr(x)),axis=1)
+    x = np.tile(x,(sz[0],sz[1]//(s*2)+1))
+    x = x[:,0:sz[1]]
+    x[:,0:s] = 1
+    x.shape += (1,)
+    
+    print(res.dtype,x.dtype)
+    res  = np.multiply(res,x) + np.multiply((1-x),R[1])
+    res2 = np.multiply(res2,x) + np.multiply((1-x),R[3])
 
-    # modelCr=Lasso().fit(np.zeros((wSize*wSize,3)),np.zeros((wSize*wSize,1)))
-    # modelCr.coef_ = recipe_c.reshape(3,)
-    # modelCr.intercept_ = recipe_c_offset.reshape(1,)
-    # HighFreqCr = modelCr.predict(X).reshape(wSize,wSize)
+    x = np.linspace(0,1,s)
+    x = np. reshape(x,(s,1))
+    x = np.concatenate((x,np.flipud(x)),axis=0)
+    x = np.tile(x,(sz[0]//(s*2)+1,sz[1]))
+    x = x[0:sz[0],:]
+    x[0:s,:] = 1
+    x.shape += (1,)
 
-    # in_lum=highFreqData_in[:,:,0]
-    # maxi=np.max(in_lum)
-    # mini=np.min(in_lum)
-    # for i in range(1,k):
-    #     yi = mini + i*(maxi-mini)/k
-    #     si = (in_lum>=yi)
-    #     si = si*(in_lum-yi)
-    #     si.shape +=(1,)
-    #     X = np.concatenate((X,si.reshape(wSize*wSize,1)),axis=1)
-    
-    # modelY=Lasso()
-    # a = time()
-    # modelY = modelY.fit(np.zeros(X.shape),np.zeros((wSize*wSize,1)))
-    # b = time()
-    # print(b-a,"Y fit")
-    # modelY.coef_[0:3] = recipe_d.reshape(-1,)
-    # modelY.coef_[3:] = recipe_f.reshape(-1,)
-    # modelY.intercept_ = recipe_d_offset.reshape(1,)
-    
-    # a = time()
-    # HighFreqY = modelY.predict(X).reshape(wSize,wSize)
-    # b = time()
-    # print(b-a,"Y pred")
-    
-    HighFreqCb = recipe_b[0] * highFreqData_in[:,:,0] + recipe_b[1] * highFreqData_in[:,:,1] + recipe_b[2] * highFreqData_in[:,:,2] + recipe_b_offset
-    HighFreqCr = recipe_c[0] * highFreqData_in[:,:,0] + recipe_c[1] * highFreqData_in[:,:,1] + recipe_c[2] * highFreqData_in[:,:,2] + recipe_c_offset
-    HighFreqY  = recipe_d[0] * highFreqData_in[:,:,0] + recipe_d[1] * highFreqData_in[:,:,1] + recipe_d[2] * highFreqData_in[:,:,2] + recipe_d_offset + sum_si
-    
-    # print(HighFreqY[HighFreqY < 0])
-    
-    # ---------6
-    upSampResidual = residualOutBlock.reshape(1,1,3)
-    for i in range(int(np.log2(wSize))):
-        upSampResidual = cv2.pyrUp(upSampResidual)
-    return upSampResidual[:,:,1:3], upSampInpBlock, HighFreqY,HighFreqCb,HighFreqCr
-    # return np.zeros((inputBlock.shape[0],inputBlock.shape[1],2)), np.zeros(inputBlock.shape[0]), np.zeros(inputBlock.shape[0]), np.zeros(inputBlock.shape[0]), np.zeros(inputBlock.shape[0])
+    res = np.multiply(x,res) + np.multiply((1-x),res2)
+    return res

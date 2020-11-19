@@ -2,6 +2,9 @@ import cv2
 import numpy as np
 from params import wSize, sigma
 import os
+from params import k
+from sklearn.linear_model import Lasso
+from imresize import imresize
 def float2uint8(R):
     return np.uint8(np.clip(np.round(R),0,255))
 
@@ -25,28 +28,6 @@ def convertYCbCr_RGB(im):
     RGB = float2uint8(RGB)
 
     return RGB
-
-# def laplacianStack(img):
-
-#     stackSize = int(np.log2(img.shape[0]))
-#     out = np.copy(img)
-#     pyramid = [out]
-#     # pyramid creation through downsampling
-#     for i in range(stackSize):
-#         out = cv2.pyrDown(out)
-#         pyramid.append(out)
-
-#     # pyramid
-#     stack = []
-#     for i in range(1,len(pyramid)):
-#         downImg = pyramid[i]
-#         upsampledImg = cv2.pyrUp(downImg)
-#         laplacianImg = pyramid[i-1] - upsampledImg
-#         for j in range(i-1):
-#             laplacianImg = cv2.pyrUp(laplacianImg)
-#         stack.append(laplacianImg)
-#     stack = np.array(stack)
-#     return stack, np.array(pyramid[-1]).reshape(3).astype('int')
 
 def laplacianStack(I, nLevels= -1, minSize = 1, useStack = True):
     if nLevels == -1:
@@ -81,14 +62,7 @@ def laplacianStack(I, nLevels= -1, minSize = 1, useStack = True):
         for i in range(0,nLevels-1):
             lapl[i] = pyramid[i].astype(np.float32) - pyramid[i+1].astype(np.float32)
         pyramid = lapl
-        pyramid = np.array(pyramid)
-        residual = pyramid[-1]
-        for i in range(int(np.log2(wSize))):
-            residual = cv2.pyrDown(residual)
-        
-        # print(pyramid[:-1].shape,residual.shape)
-        
-        return pyramid[:-1], residual
+        return pyramid
 
     else:
         for i in range(nLevels-1):
@@ -120,8 +94,110 @@ def GaussianKernel(size=wSize, sigma=sigma):
 
 def nearest2power(num):
     return 2**int(np.log2(num)+1)
-def improved(flag):
-    imageDownsample = cv2.imread('../transformed/outO.jpg')
-    os.remove('../transformed/outO.jpg')
-    path = '../outputs/out.jpg'
-    cv2.imwrite(path, imageDownsample, [int(cv2.IMWRITE_JPEG_QUALITY),25])
+
+
+def get_lowpass_image(I):
+    """ Downsample image """
+
+    lp_ratio   = wSize
+    lp_sz = [s/lp_ratio for s in I.shape[0:2]]
+    lowpassI   = imresize(I,lp_sz)
+    return lowpassI
+
+def get_multiscale_luminance(I):
+    """ Build the maps for multiscale luminance features """
+    II = np.copy(I)[:,:,0]
+    n_ms_levels = int(np.log2(wSize)-1)
+    ms = np.zeros((I.shape[0],I.shape[1],n_ms_levels))
+    L = laplacianStack(II,nLevels = n_ms_levels+1, useStack = True)
+    ms = np.zeros((I.shape[0],I.shape[1],n_ms_levels))
+    L.pop() # Remove lowpass-residual
+    for i,p in enumerate(L):
+        ms[:,:,i] = p[:,:,0]
+    return ms
+
+def get_patch_features(I, i_rng, j_rng):
+     """ Reshape patch data to feature vectors """
+
+     patch = I[i_rng[0]:i_rng[1], j_rng[0]:j_rng[1]]
+     sz = patch.shape
+     X  = np.reshape(patch,(sz[0]*sz[1],sz[2]))
+     X  = np.float64(X)
+     return X
+
+def extend_features( X, Xr, X_degraded = None, i_rng = None, j_rng = None,  ms_levels = None):
+    """ Add features for luminance prediction
+
+    Args:
+        X (np.array): basic features from the highpass
+        Xr (np.array): pixel values of the image
+            (or degraded image during estimation)
+        X_degraded (np.array): pixel values of the degraded image (to get the
+            range estimate during reconstruction)
+        i_rng (list of int): i coordinates of the patch
+        j_rng (list of int): j coordinates of the patch
+        ms_levels (np.array): pyramid maps for the multiscale features
+
+        """
+
+    luma_band_thresh = k-1
+    Xl = Xr[:,0]
+    if X_degraded is not None:
+        mini = np.amin(X_degraded[:,0])
+        maxi = np.amax(X_degraded[:,0])
+    else:
+        mini = np.amin(Xl)
+        maxi = np.amax(Xl)
+    l_step = (maxi-mini)/k
+    for il in range(1,k):
+        bp = mini+il*l_step
+        if l_step < luma_band_thresh:
+            Xl1 = np.zeros(Xl.shape)
+        else:
+            Xl1 = (Xl>=bp).astype(np.float64)
+            Xl1 = Xl1*(Xl-bp)
+        Xl1.shape += (1,)
+        X = np.concatenate((X,Xl1), axis = 1)
+    
+    Xd = get_patch_features(ms_levels,i_rng, j_rng)
+    X = np.concatenate((X,Xd),axis=1)
+    return X
+
+def get_model(  ):
+    """ Fetch the regression model to use """
+    return Lasso(alpha = 1e-3, fit_intercept = True, precompute = True,  max_iter = 1e4)
+
+def buildGaussianPyramid(I, nLevels= -1, minSize = 16):
+    if nLevels == -1:
+        nLevels = getNlevels(I,minSize)
+
+    pyramid = nLevels*[None]
+    pyramid[0] = I
+    for i in range(nLevels-1):
+        pyramid[i+1] = cv2.pyrDown(pyramid[i])
+
+    return pyramid
+
+def reconstructFromLaplacianPyramid(pyramid):
+    nLevels = len(pyramid)
+    out = pyramid[-1]
+    if len(pyramid) == 1:
+        return out
+
+    useStack = False
+    if pyramid[0].shape[0:2] == pyramid[-1].shape[0:2]:
+        useStack = True
+
+    dtp = out.dtype
+    for i in range(nLevels-2,-1,-1):
+        newSz = pyramid[i].shape[0:2]
+        if useStack:
+            up = out
+        else:
+            up = cv2.pyrUp(out,dstsize=(newSz[1],newSz[0]))
+        if len(up.shape) < 3:
+            up.shape += (1,)
+        out =  up + pyramid[i]
+        out = out.astype(dtp)
+
+    return out
