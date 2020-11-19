@@ -8,7 +8,7 @@ In this project, we implement a pipeline based on [this paper](https://groups.cs
 pip install -r requirements.txt
 ```
 
-- To run the code on a sample input and expected output image, run
+- To run the code on a sample input and expected output image, go to `src` folder and run
 ```
 bash run.sh <---path-to-input-image---> <---path-to-expected-output--->
 ```
