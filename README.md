@@ -3,7 +3,7 @@ In this project, we implement a pipeline based on [this paper](https://groups.cs
 
 ## Installation
 
-- To install all the requirements, in the homoe directory, use this
+- To install all the requirements, move to the home directory and run
 ```
 pip install -r requirements.txt
 ```
