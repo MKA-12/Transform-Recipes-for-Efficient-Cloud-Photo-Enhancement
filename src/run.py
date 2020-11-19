@@ -152,6 +152,6 @@ def main(args):
 if __name__ == '__main__':
     inputImageLocation = '../transformed/inputRef.png'
     outputImageLocation = '../transformed/outRef.png'
-    originalInputLocation = '../inputs/unprocessed.png'
+    originalInputLocation = '../inputs/unwarped.jpg'
     args = [inputImageLocation, outputImageLocation, originalInputLocation]
     main(args)
